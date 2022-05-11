@@ -1,3 +1,7 @@
+[![Swift](https://img.shields.io/badge/Swift-5.6-orange?style=flat-square)](https://img.shields.io/badge/Swift-5.6-Orange?style=flat-square)
+[![Platforms](https://img.shields.io/badge/Platforms-macOS_iOS_tvOS_watchOS_Linux-yellowgreen?style=flat-square)](https://img.shields.io/badge/Platforms-macOS_iOS_tvOS_watchOS_Linux-Green?style=flat-square)
+[![Swift Package Manager](https://img.shields.io/badge/Swift_Package_Manager-compatible-orange?style=flat-square)](https://img.shields.io/badge/Swift_Package_Manager-compatible-orange?style=flat-square)
+
 # OpenSea Stream API - Swift SDK
 
 A Swift SDK for receiving updates from the OpenSea Stream API - pushed over websockets. We currently support the following event types on a per-collection basis:
@@ -13,7 +17,17 @@ This is a best effort delivery messaging system. Messages that are not received 
 
 # Installation
 
+### Swift Package Manager
 
+The [Swift Package Manager](https://swift.org/package-manager/) is a tool for automating the distribution of Swift code and is integrated into the `swift` compiler. 
+
+Once you have your Swift package set up, adding OpenSeaSwift as a dependency is as easy as adding it to the `dependencies` value of your `Package.swift`.
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/arnauddorgans/OpenSeaSwift.git", .upToNextMajor(from: "1.0.0"))
+]
+```
 
 # Getting Started
 
