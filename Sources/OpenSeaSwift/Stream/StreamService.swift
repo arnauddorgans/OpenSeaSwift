@@ -10,6 +10,8 @@ public protocol StreamService {
   func onEvents(collectionSlug: String, eventKinds: Set<StreamEventKind>, handler: @escaping (StreamEvent) -> Void) async throws -> String
   
   func leave(_ ref: String) async throws
+  
+  func disconnect() async throws
 }
 
 final actor StreamServiceImpl: StreamService {
@@ -28,9 +30,13 @@ final actor StreamServiceImpl: StreamService {
   }
   
   func connect(onClose: @escaping () -> Void) async throws {
-    try await phoenixSocketService.connect(url: environmentService.network.rawValue,
-                                           parameters: ["token": environmentService.apiKey],
-                                           onClose: onClose)
+    try await phoenixSocketService.connect(
+      url: environmentService.network.rawValue,
+      parameters: ["token": environmentService.apiKey],
+      onClose: {
+        onClose()
+        Task { [weak self] in await self?.clear() }
+      })
   }
   
   func onEvents(collectionSlug: String, eventKinds: Set<StreamEventKind>, handler: @escaping (StreamEvent) -> Void) async throws -> String {
@@ -58,6 +64,10 @@ final actor StreamServiceImpl: StreamService {
                       handler: leftSubscription.handler)
       throw error
     }
+  }
+  
+  func disconnect() async throws {
+    try await phoenixSocketService.disconnect()
   }
 }
 
@@ -89,5 +99,10 @@ private extension StreamServiceImpl {
     let subscription = topicEventSubscriptions[topic]!.remove(at: index)
     refTopic[ref] = nil
     return subscription
+  }
+  
+  func clear() {
+    topicEventSubscriptions.removeAll()
+    refTopic.removeAll()
   }
 }

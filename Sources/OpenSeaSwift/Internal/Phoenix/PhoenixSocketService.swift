@@ -11,6 +11,8 @@ protocol PhoenixSocketService {
   func join<Event>(topic: String, onReceive: @escaping (PhoenixMessage<Event>) -> Void) async throws where Event: PhoenixEventDecodable
   
   func leave(topic: String) async throws
+  
+  func disconnect() async throws
 }
 
 final actor PhoenixSocketServiceImpl: PhoenixSocketService {
@@ -76,6 +78,10 @@ final actor PhoenixSocketServiceImpl: PhoenixSocketService {
   
   func hasJoined(topic: String) async -> Bool {
     topicSubscription(forTopic: topic) != nil
+  }
+  
+  func disconnect() async throws {
+    webSocketService.close()
   }
 }
 
