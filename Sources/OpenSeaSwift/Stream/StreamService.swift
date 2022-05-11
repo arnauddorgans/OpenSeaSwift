@@ -36,8 +36,8 @@ final actor StreamServiceImpl: StreamService {
   func onEvents(collectionSlug: String, eventKinds: Set<StreamEventKind>, handler: @escaping (StreamEvent) -> Void) async throws -> String {
     let topic = collectionTopic(slug: collectionSlug)
     let ref = addSubscription(topic: topic, eventKinds: eventKinds, handler: handler)
-    if await !phoenixSocketService.hasJoined(topic) {
-      try await phoenixSocketService.join(topic, onReceive: { message in
+    if await !phoenixSocketService.hasJoined(topic: topic) {
+      try await phoenixSocketService.join(topic: topic, onReceive: { message in
         Task { [weak self] in await self?.handle(message: message, forTopic: topic) }
       })
     }
@@ -49,7 +49,7 @@ final actor StreamServiceImpl: StreamService {
     guard let leftSubscription = leaveTopic(topic: topic, ref: ref) else { return }
     guard topicEventSubscriptions[topic]?.isEmpty == true else { return }
     do {
-      try await phoenixSocketService.leave(topic)
+      try await phoenixSocketService.leave(topic: topic)
     } catch {
       // Re-add subscription in case of error
       addSubscription(topic: topic,
@@ -77,8 +77,8 @@ private extension StreamServiceImpl {
   }
   
   func handle(message: PhoenixMessage<StreamEvent>, forTopic topic: String) {
-    for subscription in topicEventSubscriptions[topic] ?? [] where subscription.1.contains(message.eventKind) {
-      subscription.2(message.event)
+    for subscription in topicEventSubscriptions[topic] ?? [] where subscription.eventKinds.contains(message.eventKind) {
+      subscription.handler(message.event)
     }
   }
   

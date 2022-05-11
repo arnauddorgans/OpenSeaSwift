@@ -6,11 +6,11 @@ import Foundation
 protocol PhoenixSocketService {
   func connect(url urlString: String, parameters: [String: String], onClose: @escaping () -> Void) async throws
   
-  func hasJoined(_ topic: String) async -> Bool
+  func hasJoined(topic: String) async -> Bool
   
-  func join<Event>(_ topic: String, onReceive: @escaping (PhoenixMessage<Event>) -> Void) async throws where Event: PhoenixEventDecodable
+  func join<Event>(topic: String, onReceive: @escaping (PhoenixMessage<Event>) -> Void) async throws where Event: PhoenixEventDecodable
   
-  func leave(_ topic: String) async throws
+  func leave(topic: String) async throws
 }
 
 final actor PhoenixSocketServiceImpl: PhoenixSocketService {
@@ -31,21 +31,34 @@ final actor PhoenixSocketServiceImpl: PhoenixSocketService {
   }
   
   func connect(url urlString: String, parameters: [String: String], onClose: @escaping () -> Void) async throws {
-    var urlComponents = URLComponents(string: urlString + "/websocket")!
+    clear()
+    guard var urlComponents = URLComponents(string: urlString + "/websocket") else {
+      throw PhoenixSocketError.invalidURL
+    }
     urlComponents.queryItems = [
       .init(name: "vsn", value: serializerVersion)
     ] + parameters.map {
       .init(name: $0.key, value: $0.value)
     }
-    try await webSocketService.connect(url: urlComponents.url!,
-                                       onReceive: { rawMessage in Task { [weak self] in await self?.handle(rawMessage: rawMessage) } },
-                                       onClose: onClose)
+    guard let url = urlComponents.url else {
+      throw PhoenixSocketError.invalidURL
+    }
+    try await webSocketService.connect(
+      url: url,
+      onReceive: { rawMessage in
+        Task { [weak self] in await self?.handle(rawMessage: rawMessage) }
+      },
+      onClose: {
+        Task { [weak self] in await self?.clear() }
+        onClose()
+      }
+    )
     heartbeatTask = Task {
       try await heartbeat()
     }
   }
   
-  func join<Event>(_ topic: String, onReceive: @escaping (PhoenixMessage<Event>) -> Void) async throws where Event: PhoenixEventDecodable {
+  func join<Event>(topic: String, onReceive: @escaping (PhoenixMessage<Event>) -> Void) async throws where Event: PhoenixEventDecodable {
     guard topicSubscription(forTopic: topic) == nil else { return /* Already joined */ }
     createTopicSubscription(forTopic: topic, handler: onReceive)
     do {
@@ -56,45 +69,61 @@ final actor PhoenixSocketServiceImpl: PhoenixSocketService {
     }
   }
   
-  func leave(_ topic: String) async throws {
+  func leave(topic: String) async throws {
     try await send(message: .init(topic: topic, eventKind: .leave))
     clearTopicSubscription(topic: topic)
   }
   
-  func hasJoined(_ topic: String) async -> Bool {
+  func hasJoined(topic: String) async -> Bool {
     topicSubscription(forTopic: topic) != nil
   }
 }
 
 private extension PhoenixSocketServiceImpl {
+  func clear() {
+    heartbeatTask?.cancel()
+    heartbeatTask = nil
+  }
+  
   func handle(rawMessage: String) {
-    let data = rawMessage.data(using: stringEncoding)!
     do {
-      let phoenixMessage = try jsonCoderService.decoder.decode(PhoenixMessage<PhoenixInternalEvent>.self, from: data)
-      switch phoenixMessage.eventKind {
-      case .reply:
-        let ref = replySubscriptionRef(forMessage: phoenixMessage)
-        guard let subscription = replySubscription(forRef: ref) else { return /* No subscription */ }
-        subscription.resume(message: phoenixMessage)
-      default:
-        break
+      guard let data = rawMessage.data(using: stringEncoding) else {
+        throw PhoenixSocketError.invalidMessage
+      }
+      do {
+        try handlePhoenixMessage(messageData: data)
+      } catch {
+        try handleMessage(messageData: data)
       }
     } catch {
-      do {
-        let emptyMessage = try jsonCoderService.decoder.decode(PhoenixMessage<PhoenixAnyEvent>.self, from: data)
-        guard let topicSubscription = topicSubscription(forTopic: emptyMessage.topic) else { return }
-        let message = try topicSubscription.decodeMessage(data)
-        topicSubscription.send(message)
-      } catch {
-        print(rawMessage)
-        fatalError("\(error)")
-      }
+      print("Invalid message: \(rawMessage)")
     }
+  }
+  
+  private func handlePhoenixMessage(messageData data: Data) throws {
+    let phoenixMessage = try jsonCoderService.decoder.decode(PhoenixMessage<PhoenixInternalEvent>.self, from: data)
+    switch phoenixMessage.eventKind {
+    case .reply:
+      let ref = replySubscriptionRef(forMessage: phoenixMessage)
+      guard let subscription = replySubscription(forRef: ref) else { return /* No subscription */ }
+      subscription.resume(message: phoenixMessage)
+    default:
+      break
+    }
+  }
+  
+  private func handleMessage(messageData data: Data) throws {
+    let emptyMessage = try jsonCoderService.decoder.decode(PhoenixMessage<PhoenixAnyEvent>.self, from: data)
+    guard let topicSubscription = topicSubscription(forTopic: emptyMessage.topic) else { return }
+    let message = try topicSubscription.decodeMessage(data)
+    topicSubscription.send(message)
   }
   
   func send<Event>(message: PhoenixMessage<Event>) async throws where Event: PhoenixEventEncodable {
     let data = try jsonCoderService.encoder.encode(message)
-    let string = String(data: data, encoding: stringEncoding)!
+    guard let string = String(data: data, encoding: stringEncoding) else {
+      throw PhoenixSocketError.invalidMessage
+    }
     // Create reply subscription
     let ref = replySubscriptionRef(forMessage: message)
     let subscription = createReplySubscription(forRef: ref)
@@ -163,5 +192,7 @@ private extension PhoenixSocketServiceImpl {
 
 // MARK: Error
 private enum PhoenixSocketError: Error {
+  case invalidURL
+  case invalidMessage
   case replyError
 }
