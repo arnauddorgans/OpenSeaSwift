@@ -1,5 +1,5 @@
 import XCTest
-@testable import OpenSea
+@testable import OpenSeaSwift
 
 final class OpenSeaTests: XCTestCase {
   

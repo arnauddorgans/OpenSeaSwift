@@ -18,12 +18,11 @@ final class WebSocketServiceImpl: NSObject, WebSocketService {
   private var readTask: Task<Void, Never>?
   private lazy var queue = OperationQueue()
   private lazy var urlSession: URLSession = .init(configuration: .default,
-                                                  delegate: nil,
+                                                  delegate: self,
                                                   delegateQueue: queue)
   
   func connect(url: URL, onReceive: @escaping (String) -> Void, onClose: @escaping () -> Void) async throws {
     socket = urlSession.webSocketTask(with: url)
-    socket?.delegate = self
     try await withCheckedThrowingContinuation { [weak self] (continuation: CheckedContinuation<Void, Error>) in
       self?.handleConnect = continuation.resume(with:)
       self?.socket?.resume()
