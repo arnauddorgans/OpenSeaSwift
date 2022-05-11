@@ -27,7 +27,31 @@ public extension StreamEvent {
   }
 }
 
-protocol StreamEventPayload {
+extension StreamEvent.Payload: StreamEventPayload {
+  public var item: StreamItem { subPayload.item }
+  public var collection: StreamCollection { subPayload.collection }
+  
+  private var subPayload: StreamEventPayload {
+    switch self {
+    case let .itemMetadataUpdated(itemMetadataUpdated):
+      return itemMetadataUpdated
+    case let .itemListed(itemListed):
+      return itemListed
+    case let .itemSold(itemSold):
+      return itemSold
+    case let .itemTransferred(itemTransferred):
+      return itemTransferred
+    case let .itemCancelled(itemCancelled):
+      return itemCancelled
+    case let .itemReceivedOffer(itemReceivedOffer):
+      return itemReceivedOffer
+    case let .itemReceivedBid(itemReceivedBid):
+      return itemReceivedBid
+    }
+  }
+}
+
+public protocol StreamEventPayload {
   var item: StreamItem { get }
   var collection: StreamCollection { get }
 }

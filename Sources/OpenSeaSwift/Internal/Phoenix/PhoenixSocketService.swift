@@ -89,6 +89,8 @@ private extension PhoenixSocketServiceImpl {
   func clear() {
     heartbeatTask?.cancel()
     heartbeatTask = nil
+    topicSubscriptions.removeAll()
+    replySubscriptions.removeAll()
   }
   
   func handle(rawMessage: String) {
@@ -102,7 +104,7 @@ private extension PhoenixSocketServiceImpl {
         try handleMessage(messageData: data)
       }
     } catch {
-      print("Invalid message: \(rawMessage)")
+      print("Invalid message: \(rawMessage) (\(error))")
     }
   }
   
@@ -113,6 +115,8 @@ private extension PhoenixSocketServiceImpl {
       let ref = replySubscriptionRef(forMessage: phoenixMessage)
       guard let subscription = replySubscription(forRef: ref) else { return /* No subscription */ }
       subscription.resume(message: phoenixMessage)
+    case .close:
+      clearTopicSubscription(topic: phoenixMessage.topic)
     default:
       break
     }
@@ -140,8 +144,8 @@ private extension PhoenixSocketServiceImpl {
       try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
         subscription.sink { message in
           switch message.event.status {
-          case .ok:     continuation.resume()
-          case .error:  continuation.resume(throwing: PhoenixSocketError.replyError)
+          case .ok, .none:  continuation.resume()
+          case .error:      continuation.resume(throwing: PhoenixSocketError.replyError)
           }
         }
       }
@@ -156,7 +160,7 @@ private extension PhoenixSocketServiceImpl {
 // MARK: Subscription
 private extension PhoenixSocketServiceImpl {
   func replySubscriptionRef<Event>(forMessage message: PhoenixMessage<Event>) -> PhoenixReplySubscriptionRef {
-    .init(joinRef: message.joinRef, ref: message.ref, topic: message.topic)
+    .init(ref: message.ref, topic: message.topic)
   }
   
   func replySubscription(forRef ref: PhoenixReplySubscriptionRef) -> PhoenixReplySubscription? {

@@ -8,4 +8,5 @@ enum PhoenixInternalEventKind: String, Codable {
   case heartbeat = "heartbeat"
   case reply = "phx_reply"
   case leave = "phx_leave"
+  case close = "phx_close"
 }
